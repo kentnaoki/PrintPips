@@ -1,0 +1,248 @@
+//+------------------------------------------------------------------+
+//|                                                TestCloseLine.mq4 |
+//|                                                            naoki |
+//|                                                                  |
+//+------------------------------------------------------------------+
+#property copyright "naoki"
+#property link      ""
+#property version   "1.0.0"
+#property strict
+#property indicator_chart_window
+//+------------------------------------------------------------------+
+//| Custom indicator initialization function                         |
+//+------------------------------------------------------------------+
+
+int show_pips_ticket_number[10];
+
+
+//トレードのオブジェクトを作って、さらにチケット番号を配列に入れる
+
+void makeArrayAndMakeObject(int &show_pips_ticket_number[]){
+   for(int i=0; i<OrdersTotal(); i++)
+     {
+      bool select_bool = OrderSelect(i, SELECT_BY_POS, MODE_TRADES);
+      int ticket_number = OrderTicket();
+      if (select_bool == True && OrderSymbol() == Symbol()){
+         if(OrderType() == 0 || OrderType() == 1)
+           {
+               for(int j=0; j<ArraySize(show_pips_ticket_number); j++)
+                 {
+                  if(ticket_number != show_pips_ticket_number[i])
+                    {
+                     if(show_pips_ticket_number[i] != 0)
+                        {
+                           continue;
+                        } else
+                            {
+                                  ObjectCreate(StringConcatenate("No.", ticket_number), OBJ_TEXT, 0, 0, 0);
+                                  ObjectMove(StringConcatenate("No.", ticket_number), 0, Time[0]+PeriodSeconds()*10, OrderOpenPrice());
+                                  show_pips_ticket_number[i] = ticket_number;
+                            }
+                    }
+                  else
+                    {
+                     continue;
+                    }
+                 }
+           }
+         }
+      }
+}
+
+int OnInit()
+  {
+//--- indicator buffers mapping
+   if(UninitializeReason() != 3)
+     {
+      int show_pips_ticket_number[10] = {0};
+      ObjectCreate(0, "total-pips", OBJ_BUTTON, 0, 0, 0);
+      ObjectSetInteger( 0, "total-pips", OBJPROP_SELECTABLE, true);
+      ObjectSetInteger( 0, "total-pips", OBJPROP_SELECTED,   true);
+      ObjectSetInteger(0, "total-pips",OBJPROP_XSIZE, 110);
+      ObjectSetInteger(0, "total-pips",OBJPROP_YSIZE, 50);
+      ObjectSetInteger(0, "total-pips",OBJPROP_BACK, false);
+      ObjectSetInteger(0, "total-pips",OBJPROP_ALIGN, ALIGN_CENTER);
+      ObjectSetInteger(0, "total-pips",OBJPROP_CORNER,CORNER_RIGHT_LOWER);
+      ObjectSetInteger(0, "total-pips",OBJPROP_XDISTANCE,120);
+      ObjectSetInteger(0, "total-pips",OBJPROP_YDISTANCE,70);
+      //makeArrayAndMakeObject(show_pips_ticket_number);
+   }
+   /*else
+     {
+      show_pips_ticket_number[10] = GlobalVariableGet("変数名");
+     }*/
+//---
+   return(INIT_SUCCEEDED);
+  }
+//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+void OnDeinit( const int reason ) {
+   if(reason == REASON_CHARTCHANGE)
+     {
+      //GlobalVariableSet("変数名", show_pips_ticket_number[10]);
+     }
+   //GlobalVariableSet("変数名", show_pips_ticket_number[10]);
+}
+
+
+
+// 損益をpipsに
+double profitInPips(int order_num){
+   double order_entry_price;
+   double pips;
+   
+   if (OrderType() % 2 == 0){
+      order_entry_price = Bid;
+      }
+   else if (OrderType() % 2 != 0) {
+      order_entry_price = Ask;
+      } 
+   
+   if (OrderSelect(order_num, SELECT_BY_TICKET, MODE_TRADES) == True){
+
+         if(OrderType() % 2 == 0)
+           {
+            pips = ((order_entry_price - OrderOpenPrice()) / MarketInfo(Symbol(),MODE_POINT)) / 10;
+           }
+         else if(OrderType() % 2 != 0)
+                {
+                 pips = ((OrderOpenPrice() - order_entry_price) / MarketInfo(Symbol(),MODE_POINT)) / 10;
+                }
+
+      pips = NormalizeDouble(pips, 1);
+      return pips;
+   }
+   else
+     {
+      return 0;
+     }
+}
+
+//show_pips_ticket_numberのトレードがすでに決済されていたら0にする
+void removeTicketNumber(int &show_pips_ticket_number[]){
+   for(int j=0; j<ArraySize(show_pips_ticket_number); j++){
+      int flag = 0;
+      for(int i=0; i<OrdersTotal(); i++)
+        {
+            bool select_bool = OrderSelect(i, SELECT_BY_POS, MODE_TRADES);
+            int ticket_number = OrderTicket();
+            if (select_bool == True && OrderSymbol() == Symbol()){
+               if(OrderType() == 0 || OrderType() == 1){
+                  if(ticket_number != show_pips_ticket_number[j] && flag == 0)
+                    {
+                        continue;
+                    }
+                  else
+                    {
+                        flag = 1;
+                    }
+               }
+            }
+         
+        }
+      if(flag == 0)
+        {
+            show_pips_ticket_number[j] = 0;
+        }
+   }
+}
+
+
+//決済済みのオブジェクトを消す
+void deleteProfitObject(int &show_pips_ticket_number[]){
+      for(int i=0;i<ObjectsTotal(0, 0, -1);i++)
+     {
+      string name = ObjectName(i);
+      if(StringFind(name, "No.") == 0)
+        {
+         long name_int = StringToInteger(StringSubstr(name, 3));
+
+         int flag = 0;
+         for(int x=0; x<ArraySize(show_pips_ticket_number); x++)
+           {
+            if(name_int == show_pips_ticket_number[x])
+              {
+               flag = 1;
+              }
+            else
+              {
+               continue;
+              }
+           }
+         if(flag == 0)
+           {
+            
+            ObjectDelete(ChartID(), StringConcatenate("No.", name_int));
+           }
+        }
+     }
+}
+
+// それぞれのトレードで損益によって表示の色を変える
+void changeColor(double &profit_list[]){
+   for(int m=0; m<ArraySize(show_pips_ticket_number); m++)
+     {
+      if(show_pips_ticket_number[m] != 0)
+        {
+         int ticket_number = show_pips_ticket_number[m];
+         if(profitInPips(ticket_number) > 0){
+            ObjectSetText(StringConcatenate("No.", ticket_number), StringConcatenate(DoubleToString(profitInPips(ticket_number),1), "pips"), 12, NULL, clrLime);
+         } else if(profitInPips(ticket_number) < 0)
+                  {
+                   ObjectSetText(StringConcatenate("No.", ticket_number), StringConcatenate(DoubleToString(profitInPips(ticket_number),1), "pips"), 12, NULL, clrRed);
+                  }
+           else
+             {
+              ObjectSetText(StringConcatenate("No.", ticket_number), StringConcatenate(profitInPips(ticket_number), "pips"), 12, NULL, clrWhite);
+             }
+         profit_list[m] = profitInPips(ticket_number);
+        }
+      }
+}
+
+// 損益が入った配列を合計する
+void totalPips(double total_pips, double &profit_list[]){
+   for(int n=0; n<ArraySize(profit_list); n++)
+     {
+      total_pips += profit_list[n];
+     }
+   total_pips = NormalizeDouble(total_pips, 1);
+
+   ObjectSetString(0, "total-pips", OBJPROP_TEXT, StringConcatenate(DoubleToString(total_pips,1), "pips"));
+}   
+
+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &time[],
+                const double &open[],
+                const double &high[],
+                const double &low[],
+                const double &close[],
+                const long &tick_volume[],
+                const long &volume[],
+                const int &spread[])
+  {
+   double profit_list[10];
+   ArrayInitialize(profit_list, 0);
+   double total_pips = 0;
+   
+   // 今のwindowで現在進行形のトレードのオブジェクトを作って、さらにチケット番号を配列に入れる
+   makeArrayAndMakeObject(show_pips_ticket_number);
+   
+   // if 配列に番号が入っていなかったら配列に追加してオブジェクトを作成
+   
+   // pips数の更新
+   
+   removeTicketNumber(show_pips_ticket_number);
+   
+   deleteProfitObject(show_pips_ticket_number);
+   
+   changeColor(profit_list);
+
+   totalPips(total_pips, profit_list);
+
+//--- return value of prev_calculated for next call
+   return(rates_total);
+  }
